@@ -50,6 +50,7 @@ class NetatmoFan(NetatmoModuleEntity, FanEntity):
     _attr_supported_features = FanEntityFeature.PRESET_MODE
     _attr_configuration_url = CONF_URL_CONTROL
     _attr_name = None
+    _attr_translation_key = "netatmo"
     device: NaModules.Fan
 
     def __init__(self, netatmo_device: NetatmoDevice) -> None:

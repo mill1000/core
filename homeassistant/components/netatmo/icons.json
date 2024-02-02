@@ -31,6 +31,18 @@
       "health_idx": {
         "default": "mdi:cloud"
       }
+    },
+    "fan": {
+      "netatmo": {
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "slow": "mdi:speedometer-slow",
+              "fast": "mdi:speedometer"
+            }
+          }
+        }
+      }
     }
   },
   "services": {
