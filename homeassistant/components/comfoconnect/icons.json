@@ -1,0 +1,15 @@
+{
+  "entity": {
+    "fan": {
+      "comfoconnect": {
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "auto": "mdi:fan-auto"
+            }
+          }
+        }
+      }
+    }
+  }
+}
