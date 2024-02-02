@@ -68,6 +68,7 @@ class RabbitAirFanEntity(RabbitAirBaseEntity, FanEntity):
             ]
 
         self._attr_speed_count = len(SPEED_LIST)
+        self._attr_translation_key = "rabbitair"
 
         self._get_state_from_coordinator_data()
 
