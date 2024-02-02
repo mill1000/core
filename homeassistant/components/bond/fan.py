@@ -81,6 +81,7 @@ class BondFan(BondEntity, FanEntity):
         if self._device.has_action(Action.BREEZE_ON):
             features |= FanEntityFeature.PRESET_MODE
         self._attr_supported_features = features
+        self._attr_translation_key = "bond"
 
     def _apply_state(self) -> None:
         state = self._device.state

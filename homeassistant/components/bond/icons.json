@@ -93,6 +93,17 @@
           "on": "mdi:fireplace"
         }
       }
+    },
+    "fan": {
+      "bond": {
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "breeze": "mdi:weather-windy"
+            }
+          }
+        }
+      }
     }
   },
   "services": {
