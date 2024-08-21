@@ -62,16 +62,11 @@ async def _async_discover(hass: HomeAssistant, adapter_ip: IPv4Address) -> bool:
 async def _async_has_devices(hass: HomeAssistant) -> bool:
     """Return if there are devices that can be discovered."""
 
-    adapters = await network.async_get_adapters(hass)
-    source_ips: list[IPv4Address] = []
-    for adapter in adapters:
-        if not adapter["enabled"]:
-            continue
-        if adapter["ipv4"]:
-            addrs_ipv4 = [IPv4Address(ipv4["address"]) for ipv4 in adapter["ipv4"]]
-            source_ips.extend(addrs_ipv4)
+    source_ips = await network.async_get_enabled_source_ips(hass)
 
-    results = await asyncio.gather(*[_async_discover(hass, ip) for ip in source_ips])
+    results = await asyncio.gather(
+        *[_async_discover(hass, ip) for ip in source_ips if isinstance(ip, IPv4Address)]
+    )
 
     return any(results)
 
