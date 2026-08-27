@@ -165,6 +165,9 @@ class ModelContextProtocolConfigFlow(AbstractOAuth2FlowHandler, domain=DOMAIN):
         """Handle the initial step."""
         errors: dict[str, str] = {}
         if user_input is not None:
+            if self.source == SOURCE_REAUTH and "auth_implementation" not in self.data:
+                self.data[CONF_URL] = user_input[CONF_URL]
+                return await self.async_step_auth_discovery()
             try:
                 info = await validate_input(self.hass, user_input)
             except InvalidUrl:
@@ -188,7 +191,9 @@ class ModelContextProtocolConfigFlow(AbstractOAuth2FlowHandler, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="user",
-            data_schema=STEP_USER_DATA_SCHEMA,
+            data_schema=self.add_suggested_values_to_schema(
+                STEP_USER_DATA_SCHEMA, user_input or self.data
+            ),
             errors=errors,
             description_placeholders={"example_url": EXAMPLE_URL},
         )
@@ -356,7 +361,7 @@ class ModelContextProtocolConfigFlow(AbstractOAuth2FlowHandler, domain=DOMAIN):
         config_entry = self._get_reauth_entry()
         self.data = {**config_entry.data}
         if "auth_implementation" not in self.data:
-            return await self.async_step_auth_discovery()
+            return await self.async_step_user()
         return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(

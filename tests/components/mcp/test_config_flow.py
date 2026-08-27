@@ -985,6 +985,11 @@ async def test_reauth_flow_upgrade_to_oauth(
     flows = hass.config_entries.flow.async_progress()
     assert len(flows) == 1
     result = flows[0]
+    assert result["step_id"] == "user"
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_URL: MCP_SERVER_URL}
+    )
 
     assert result["step_id"] == "credentials_choice"
 
@@ -1063,6 +1068,10 @@ async def test_reauth_flow_upgrade_to_oauth_no_auth_header(
     flows = hass.config_entries.flow.async_progress()
     assert len(flows) == 1
     result = flows[0]
-    assert result["step_id"] == "credentials_choice"
+    assert result["step_id"] == "user"
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_URL: MCP_SERVER_URL}
+    )
 
     assert result["step_id"] == "credentials_choice"
