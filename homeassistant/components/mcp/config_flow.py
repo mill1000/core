@@ -11,7 +11,11 @@ import voluptuous as vol
 from yarl import URL
 
 from homeassistant.components.application_credentials import AuthorizationServer
-from homeassistant.config_entries import SOURCE_REAUTH, ConfigFlowResult
+from homeassistant.config_entries import (
+    SOURCE_REAUTH,
+    SOURCE_RECONFIGURE,
+    ConfigFlowResult,
+)
 from homeassistant.const import CONF_ACCESS_TOKEN, CONF_TOKEN, CONF_URL
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
@@ -329,7 +333,13 @@ class ModelContextProtocolConfigFlow(AbstractOAuth2FlowHandler, domain=DOMAIN):
         # Unique id based on the application credentials OAuth Client ID
         if self.source == SOURCE_REAUTH:
             return self.async_update_reload_and_abort(
-                self._get_reauth_entry(), data=config_entry_data
+                self._get_reauth_entry(),
+                data=config_entry_data,
+            )
+        if self.source == SOURCE_RECONFIGURE:
+            return self.async_update_reload_and_abort(
+                self._get_reconfigure_entry(),
+                data=config_entry_data,
             )
         await self.async_set_unique_id(config_entry_data["auth_implementation"])
         return self.async_create_entry(
@@ -343,6 +353,10 @@ class ModelContextProtocolConfigFlow(AbstractOAuth2FlowHandler, domain=DOMAIN):
         """Perform reauth upon an API authentication error."""
         if entry_data and "auth_header" in entry_data:
             self.auth_header = entry_data["auth_header"]
+        config_entry = self._get_reauth_entry()
+        self.data = {**config_entry.data}
+        if "auth_implementation" not in self.data:
+            return await self.async_step_auth_discovery()
         return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(
@@ -364,6 +378,52 @@ class ModelContextProtocolConfigFlow(AbstractOAuth2FlowHandler, domain=DOMAIN):
             self.hass, config_entry
         )
         return await self.async_step_auth()
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Perform reconfiguration upon an API authentication error."""
+        config_entry = self._get_reconfigure_entry()
+        self.data = {**config_entry.data}
+        if "auth_implementation" in self.data:
+            self.flow_impl = await async_get_config_entry_implementation(  # type: ignore[assignment]
+                self.hass, config_entry
+            )
+            return await self.async_step_auth()
+
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            data = {CONF_URL: user_input[CONF_URL]}
+            try:
+                info = await validate_input(self.hass, data)
+            except InvalidUrl:
+                errors[CONF_URL] = "invalid_url"
+            except TimeoutConnectError:
+                errors["base"] = "timeout_connect"
+            except CannotConnect:
+                errors["base"] = "cannot_connect"
+            except InvalidAuth:
+                errors["base"] = "invalid_auth"
+            except MissingCapabilities:
+                return self.async_abort(reason="missing_capabilities")
+            except Exception:
+                _LOGGER.exception("Unexpected exception")
+                errors["base"] = "unknown"
+            else:
+                return self.async_update_reload_and_abort(
+                    config_entry,
+                    data=data,
+                    title=info["title"],
+                )
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=self.add_suggested_values_to_schema(
+                STEP_USER_DATA_SCHEMA,
+                user_input or {CONF_URL: config_entry.data[CONF_URL]},
+            ),
+            errors=errors,
+        )
 
 
 async def _async_fetch_any(

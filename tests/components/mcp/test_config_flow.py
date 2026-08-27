@@ -897,6 +897,58 @@ async def test_reauth_flow(
 
 @pytest.mark.usefixtures("current_request_with_host")
 @respx.mock
+async def test_reconfigure_flow(
+    hass: HomeAssistant,
+    mock_setup_entry: AsyncMock,
+    mock_mcp_client: Mock,
+    credential: None,
+    config_entry_with_auth: MockConfigEntry,
+    aioclient_mock: AiohttpClientMocker,
+    hass_client_no_auth: ClientSessionGenerator,
+) -> None:
+    """Test reconfiguring an MCP server with OAuth credentials."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "entry_id": config_entry_with_auth.entry_id,
+        },
+    )
+    assert result["step_id"] == "auth"
+
+    result = await perform_oauth_flow(
+        hass, aioclient_mock, hass_client_no_auth, result, scopes=SCOPES
+    )
+
+    response = Mock()
+    response.serverInfo.name = TEST_API_NAME
+    mock_mcp_client.return_value.initialize.return_value = response
+
+    result = await hass.config_entries.flow.async_configure(result["flow_id"])
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+
+    assert config_entry_with_auth.unique_id == AUTH_DOMAIN
+    assert config_entry_with_auth.title == TEST_API_NAME
+    data = {**config_entry_with_auth.data}
+    token = data.pop(CONF_TOKEN)
+    assert data == {
+        "auth_implementation": AUTH_DOMAIN,
+        CONF_URL: MCP_SERVER_URL,
+        CONF_AUTHORIZATION_URL: OAUTH_AUTHORIZE_URL,
+        CONF_TOKEN_URL: OAUTH_TOKEN_URL,
+        CONF_SCOPE: ["read", "write"],
+    }
+    assert token
+    token.pop("expires_at")
+    assert token == OAUTH_TOKEN_PAYLOAD
+
+    await hass.async_block_till_done()
+    assert len(mock_setup_entry.mock_calls) == 1
+
+
+@pytest.mark.usefixtures("current_request_with_host")
+@respx.mock
 async def test_reauth_flow_upgrade_to_oauth(
     hass: HomeAssistant,
     mock_setup_entry: AsyncMock,
@@ -918,15 +970,6 @@ async def test_reauth_flow_upgrade_to_oauth(
         scopes=SCOPES_SUPPORTED,
     )
 
-    # Start reauth flow passing auth_header
-    config_entry.async_start_reauth(hass, data={"auth_header": auth_header})
-    await hass.async_block_till_done()
-
-    flows = hass.config_entries.flow.async_progress()
-    assert len(flows) == 1
-    result = flows[0]
-    assert result["step_id"] == "reauth_confirm"
-
     # Mock discovery URLs (bypassing connection validation)
     respx.get("https://example.com/custom-discovery").mock(
         return_value=OAUTH_PROTECTED_RESOURCE_METADATA_RESPONSE
@@ -935,11 +978,14 @@ async def test_reauth_flow_upgrade_to_oauth(
         return_value=OAUTH_SERVER_METADATA_RESPONSE
     )
 
-    # Click Submit on reauth_confirm
-    result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+    # Start reauth flow passing auth_header
+    config_entry.async_start_reauth(hass, data={"auth_header": auth_header})
+    await hass.async_block_till_done()
 
-    # Flow should proceed to credentials choice
-    assert result["type"] is FlowResultType.MENU
+    flows = hass.config_entries.flow.async_progress()
+    assert len(flows) == 1
+    result = flows[0]
+
     assert result["step_id"] == "credentials_choice"
 
     result = await hass.config_entries.flow.async_configure(
@@ -1005,6 +1051,11 @@ async def test_reauth_flow_upgrade_to_oauth_no_auth_header(
     )
     config_entry.add_to_hass(hass)
 
+    # Mock discovery on the default server URL (since there is no auth_header)
+    respx.get(OAUTH_DISCOVERY_ENDPOINT).mock(
+        return_value=OAUTH_SERVER_METADATA_RESPONSE
+    )
+
     # Start reauth flow without passing auth_header
     config_entry.async_start_reauth(hass)
     await hass.async_block_till_done()
@@ -1012,16 +1063,6 @@ async def test_reauth_flow_upgrade_to_oauth_no_auth_header(
     flows = hass.config_entries.flow.async_progress()
     assert len(flows) == 1
     result = flows[0]
-    assert result["step_id"] == "reauth_confirm"
+    assert result["step_id"] == "credentials_choice"
 
-    # Mock discovery on the default server URL (since there is no auth_header)
-    respx.get(OAUTH_DISCOVERY_ENDPOINT).mock(
-        return_value=OAUTH_SERVER_METADATA_RESPONSE
-    )
-
-    # Click Submit on reauth_confirm
-    result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
-
-    # Flow should proceed directly to credentials choice menu (without validate_input)
-    assert result["type"] is FlowResultType.MENU
     assert result["step_id"] == "credentials_choice"
